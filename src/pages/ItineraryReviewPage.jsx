@@ -289,9 +289,6 @@ export default function ItineraryReviewPage() {
       alert(`Failed to revoke: ${err.message}`);
     }
   };
-      alert(`Failed to revoke: ${err.message}`);
-    }
-  };
 
   // Filter experiences based on activeTab & searchQuery
   const filteredExperiences = experiences.filter((exp) => {
