@@ -28,25 +28,48 @@ export default function ExperiencesPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'experiences'), (snapshot) => {
-      const list = [];
+    let itinList = [];
+    let expList = [];
+
+    const updateCombined = () => {
+      const map = {};
+      expList.forEach((e) => map[e.id] = { _collection: 'experiences', ...e });
+      itinList.forEach((i) => map[i.id] = { _collection: 'itineraries', ...i });
+      setExperiences(Object.values(map));
+      setLoading(false);
+    };
+
+    const unsubItin = onSnapshot(collection(db, 'itineraries'), (snapshot) => {
+      itinList = [];
       snapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
+        itinList.push({ id: docSnap.id, ...docSnap.data() });
       });
-      setExperiences(list);
-      setLoading(false);
+      updateCombined();
     }, (err) => {
-      console.error("Error loading experiences:", err);
-      setLoading(false);
+      console.warn("Error loading itineraries:", err);
     });
 
-    return () => unsub();
+    const unsubExp = onSnapshot(collection(db, 'experiences'), (snapshot) => {
+      expList = [];
+      snapshot.forEach((docSnap) => {
+        expList.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      updateCombined();
+    }, (err) => {
+      console.warn("Error loading experiences:", err);
+    });
+
+    return () => {
+      unsubItin();
+      unsubExp();
+    };
   }, []);
 
   const handleToggleStatus = async (exp) => {
     try {
-      const newStatus = exp.status === 'published' ? 'draft' : 'published';
-      await updateDoc(doc(db, 'experiences', exp.id), { status: newStatus });
+      const colName = exp._collection || 'itineraries';
+      const newStatus = (exp.status === 'published' || exp.status === 'approved') ? 'draft' : 'approved';
+      await updateDoc(doc(db, colName, exp.id), { status: newStatus });
       if (selectedExp?.id === exp.id) {
         setSelectedExp((prev) => ({ ...prev, status: newStatus }));
       }
@@ -59,7 +82,8 @@ export default function ExperiencesPage() {
   const handleDeleteExp = async (exp) => {
     if (!window.confirm(`Are you sure you want to permanently delete "${exp.title}"?`)) return;
     try {
-      await deleteDoc(doc(db, 'experiences', exp.id));
+      const colName = exp._collection || 'itineraries';
+      await deleteDoc(doc(db, colName, exp.id));
       if (selectedExp?.id === exp.id) setSelectedExp(null);
       alert('Experience deleted.');
     } catch (err) {

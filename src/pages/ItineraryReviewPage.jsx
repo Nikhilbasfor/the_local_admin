@@ -61,21 +61,44 @@ export default function ItineraryReviewPage() {
     }
   }, [searchParams]);
 
-  // Real-time listener for experiences
+  // Real-time listener for both 'itineraries' and 'experiences' collections
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'experiences'), (snapshot) => {
-      const list = [];
+    let itinList = [];
+    let expList = [];
+
+    const updateCombined = () => {
+      const map = {};
+      expList.forEach((e) => map[e.id] = { _collection: 'experiences', ...e });
+      itinList.forEach((i) => map[i.id] = { _collection: 'itineraries', ...i });
+      const combined = Object.values(map);
+      setExperiences(combined);
+      setLoading(false);
+    };
+
+    const unsubItin = onSnapshot(collection(db, 'itineraries'), (snapshot) => {
+      itinList = [];
       snapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
+        itinList.push({ id: docSnap.id, ...docSnap.data() });
       });
-      setExperiences(list);
-      setLoading(false);
+      updateCombined();
     }, (err) => {
-      console.error("Error fetching experiences:", err);
-      setLoading(false);
+      console.warn("Error fetching itineraries:", err);
     });
 
-    return () => unsub();
+    const unsubExp = onSnapshot(collection(db, 'experiences'), (snapshot) => {
+      expList = [];
+      snapshot.forEach((docSnap) => {
+        expList.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      updateCombined();
+    }, (err) => {
+      console.warn("Error fetching experiences:", err);
+    });
+
+    return () => {
+      unsubItin();
+      unsubExp();
+    };
   }, []);
 
   // Fetch gallery images from Storage path experiences/{id}/images/
@@ -104,7 +127,8 @@ export default function ItineraryReviewPage() {
   // Action Handlers
   const handleApproveItinerary = async (exp) => {
     try {
-      const expRef = doc(db, 'experiences', exp.id);
+      const colName = exp._collection || 'itineraries';
+      const expRef = doc(db, colName, exp.id);
       const adminEmail = currentUser?.email || 'admin@yatraki.com';
 
       await updateDoc(expRef, {
@@ -113,7 +137,7 @@ export default function ItineraryReviewPage() {
         itineraryVerifiedBy: adminEmail,
         itineraryStatus: 'approved',
         itineraryRejectionReason: null,
-        status: 'published'
+        status: 'approved'
       });
 
       // Write notification
@@ -139,11 +163,12 @@ export default function ItineraryReviewPage() {
   const handleReReview = async (exp) => {
     if (!window.confirm(`Reset "${exp.title}" back to pending review?`)) return;
     try {
-      const expRef = doc(db, 'experiences', exp.id);
+      const colName = exp._collection || 'itineraries';
+      const expRef = doc(db, colName, exp.id);
       await updateDoc(expRef, {
         itineraryVerified: false,
         itineraryStatus: 'pending',
-        status: 'draft'
+        status: 'pending'
       });
       alert(`Itinerary status reset to pending review.`);
     } catch (err) {
@@ -155,22 +180,23 @@ export default function ItineraryReviewPage() {
   const handleConfirmRequestChanges = async () => {
     if (!changesModalExp || !feedbackText.trim()) return;
     try {
-      const expRef = doc(db, 'experiences', changesModalExp.id);
+      const colName = changesModalExp._collection || 'itineraries';
+      const expRef = doc(db, colName, changesModalExp.id);
       const adminEmail = currentUser?.email || 'admin@yatraki.com';
 
-      // Write to sub-collection experiences/{id}/itineraryFeedback
-      await addDoc(collection(db, 'experiences', changesModalExp.id, 'itineraryFeedback'), {
+      // Write to sub-collection
+      await addDoc(collection(db, colName, changesModalExp.id, 'itineraryFeedback'), {
         feedback: feedbackText.trim(),
         adminEmail,
         createdAt: serverTimestamp(),
         resolved: false
       });
 
-      // Update experience doc
+      // Update itinerary doc
       await updateDoc(expRef, {
         itineraryVerified: false,
         itineraryStatus: 'changes_requested',
-        status: 'draft'
+        status: 'changes_requested'
       });
 
       // Write notification
@@ -199,13 +225,14 @@ export default function ItineraryReviewPage() {
   const handleConfirmRejectItinerary = async () => {
     if (!rejectModalExp || !rejectReason.trim()) return;
     try {
-      const expRef = doc(db, 'experiences', rejectModalExp.id);
+      const colName = rejectModalExp._collection || 'itineraries';
+      const expRef = doc(db, colName, rejectModalExp.id);
 
       await updateDoc(expRef, {
         itineraryVerified: false,
         itineraryStatus: 'rejected',
         itineraryRejectionReason: rejectReason.trim(),
-        status: 'draft'
+        status: 'rejected'
       });
 
       if (rejectModalExp.guideId) {
@@ -234,13 +261,14 @@ export default function ItineraryReviewPage() {
     if (reason === null) return;
     const trimmedReason = reason.trim() || 'Revoked by admin';
     try {
-      const expRef = doc(db, 'experiences', exp.id);
+      const colName = exp._collection || 'itineraries';
+      const expRef = doc(db, colName, exp.id);
 
       await updateDoc(expRef, {
         itineraryVerified: false,
         itineraryStatus: 'rejected',
         itineraryRejectionReason: trimmedReason,
-        status: 'draft'
+        status: 'rejected'
       });
 
       if (exp.guideId) {
@@ -258,6 +286,9 @@ export default function ItineraryReviewPage() {
       alert('Itinerary revoked and guide notified.');
     } catch (err) {
       console.error("Revoke error:", err);
+      alert(`Failed to revoke: ${err.message}`);
+    }
+  };
       alert(`Failed to revoke: ${err.message}`);
     }
   };
@@ -585,11 +616,46 @@ export default function ItineraryReviewPage() {
                         </div>
                       ) : exp.days && Array.isArray(exp.days) && exp.days.length > 0 ? (
                         <div className="space-y-3">
-                          {exp.days.map((dayText, dIdx) => (
-                            <div key={dIdx} className="p-3 bg-white rounded-xl border border-[#E8DFD0] text-xs text-[#2C2C2A]">
-                              <span className="font-bold text-[#0F6E56] mr-2">Day {dIdx + 1}:</span> {dayText}
-                            </div>
-                          ))}
+                          {exp.days.map((dayItem, dIdx) => {
+                            if (typeof dayItem === 'object' && dayItem !== null) {
+                              return (
+                                <div key={dIdx} className="bg-[#ECFDF5]/30 border border-[#E8DFD0] rounded-2xl p-4 space-y-3">
+                                  <div className="flex items-center justify-between border-b border-[#E8DFD0] pb-2">
+                                    <span className="px-3 py-1 bg-[#0F6E56] text-white font-bold text-xs rounded-lg">
+                                      Day {dayItem.dayNumber || dayItem.day || dIdx + 1}
+                                    </span>
+                                    <h5 className="text-sm font-bold text-[#2C2C2A] flex-1 ml-3">
+                                      {dayItem.dayTitle || dayItem.title || `Day ${dIdx + 1} Schedule`}
+                                    </h5>
+                                  </div>
+                                  {dayItem.accommodation && (
+                                    <div className="text-[11px] text-[#5F5E5A] bg-white p-2.5 rounded-xl border border-[#E8DFD0]">
+                                      <span className="font-bold text-[#2C2C2A]">Stay / Lodging:</span> {dayItem.accommodation}
+                                    </div>
+                                  )}
+                                  {dayItem.activities && Array.isArray(dayItem.activities) && dayItem.activities.length > 0 && (
+                                    <div className="space-y-2 pt-1">
+                                      {dayItem.activities.map((act, aIdx) => (
+                                        <div key={aIdx} className="p-2.5 bg-white rounded-xl border border-[#E8DFD0] flex items-center gap-3 text-xs">
+                                          <span className="px-2 py-0.5 bg-[#EF9F27]/20 text-[#C97E16] font-mono text-[10px] font-bold rounded">
+                                            {typeof act === 'object' ? (act.time || 'All Day') : 'Activity'}
+                                          </span>
+                                          <span className="font-semibold text-[#2C2C2A]">
+                                            {typeof act === 'object' ? (act.activityTitle || act.title || '') : String(act)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={dIdx} className="p-3 bg-white rounded-xl border border-[#E8DFD0] text-xs text-[#2C2C2A]">
+                                <span className="font-bold text-[#0F6E56] mr-2">Day {dIdx + 1}:</span> {String(dayItem)}
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : (
                         <p className="text-xs text-[#5F5E5A] italic">No detailed day-by-day itinerary object supplied.</p>
