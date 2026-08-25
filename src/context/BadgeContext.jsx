@@ -19,7 +19,7 @@ export function BadgeProvider({ children }) {
         const data = docSnap.data();
         const isGuide = data.role && data.role.toUpperCase() === 'GUIDE';
         const isVerified = data.isVerified === true || data.isVerified === "true" || data.verified === true || data.verified === "true";
-        if (isGuide && !isVerified && (!data.rejectionReason || data.isRevoked === true)) {
+        if (isGuide && !isVerified && (!data.rejectionReason || data.isRevoked === true) && data.onboardingComplete === true) {
           count++;
         }
       });

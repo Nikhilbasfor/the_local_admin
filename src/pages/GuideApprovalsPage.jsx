@@ -240,7 +240,7 @@ export default function GuideApprovalsPage() {
     const isVerified = checkIsVerified(g);
 
     if (activeTab === 'pending') {
-      return !isVerified && (!g.rejectionReason || g.isRevoked === true);
+      return !isVerified && (!g.rejectionReason || g.isRevoked === true) && g.onboardingComplete === true;
     }
     if (activeTab === 'approved') {
       return isVerified;
@@ -296,7 +296,7 @@ export default function GuideApprovalsPage() {
         ].map((tab) => {
           const count = guides.filter(g => {
             const isVerified = checkIsVerified(g);
-            if (tab.key === 'pending') return !isVerified && (!g.rejectionReason || g.isRevoked === true);
+            if (tab.key === 'pending') return !isVerified && (!g.rejectionReason || g.isRevoked === true) && g.onboardingComplete === true;
             if (tab.key === 'approved') return isVerified;
             if (tab.key === 'rejected') return !isVerified && !!g.rejectionReason && !g.isRevoked;
             return true;
