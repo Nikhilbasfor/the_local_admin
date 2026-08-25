@@ -21,14 +21,30 @@ export default function ReviewsPage() {
   const [ratingFilter, setRatingFilter] = useState('ALL');
 
   useEffect(() => {
+    let expMap = {};
+    let itinMap = {};
+
+    const updateCombinedMap = () => {
+      setExperiencesMap({ ...expMap, ...itinMap });
+    };
+
     // Listen to experiences to map experienceId -> title
     const unsubExp = onSnapshot(collection(db, 'experiences'), (snapshot) => {
-      const map = {};
+      expMap = {};
       snapshot.forEach(docSnap => {
-        map[docSnap.id] = docSnap.data().title || 'Untitled Experience';
+        expMap[docSnap.id] = docSnap.data().title || 'Untitled Experience';
       });
-      setExperiencesMap(map);
+      updateCombinedMap();
     }, (err) => console.warn("Error mapping experiences for reviews:", err));
+
+    // Listen to itineraries to map experienceId -> title
+    const unsubItin = onSnapshot(collection(db, 'itineraries'), (snapshot) => {
+      itinMap = {};
+      snapshot.forEach(docSnap => {
+        itinMap[docSnap.id] = docSnap.data().title || 'Untitled Itinerary';
+      });
+      updateCombinedMap();
+    }, (err) => console.warn("Error mapping itineraries for reviews:", err));
 
     // Listen to reviews
     const unsubRev = onSnapshot(collection(db, 'reviews'), (snapshot) => {
@@ -45,6 +61,7 @@ export default function ReviewsPage() {
 
     return () => {
       unsubExp();
+      unsubItin();
       unsubRev();
     };
   }, []);
@@ -58,7 +75,7 @@ export default function ReviewsPage() {
       // 1. Delete review document
       await deleteDoc(doc(db, 'reviews', review.id));
 
-      // 2. Recalculate average rating & reviewCount for parent experience
+      // 2. Recalculate average rating & reviewCount for parent experience / itinerary
       const expId = review.experienceId;
       if (expId) {
         const q = query(collection(db, 'reviews'), where('experienceId', '==', expId));
@@ -77,11 +94,33 @@ export default function ReviewsPage() {
 
         const newAvgRating = count > 0 ? Number((totalRating / count).toFixed(1)) : 0;
 
-        // Update parent experience document
-        await updateDoc(doc(db, 'experiences', expId), {
-          rating: newAvgRating,
-          reviewCount: count
-        });
+        // Update parent experience document if exists
+        try {
+          const expRef = doc(db, 'experiences', expId);
+          const expSnap = await getDoc(expRef);
+          if (expSnap.exists()) {
+            await updateDoc(expRef, {
+              rating: newAvgRating,
+              reviewCount: count
+            });
+          }
+        } catch (e) {
+          console.warn("Could not update experiences doc:", e);
+        }
+
+        // Update parent itinerary document if exists
+        try {
+          const itinRef = doc(db, 'itineraries', expId);
+          const itinSnap = await getDoc(itinRef);
+          if (itinSnap.exists()) {
+            await updateDoc(itinRef, {
+              rating: newAvgRating,
+              reviewCount: count
+            });
+          }
+        } catch (e) {
+          console.warn("Could not update itineraries doc:", e);
+        }
       }
 
       alert('Review deleted and experience rating updated successfully!');
@@ -109,6 +148,11 @@ export default function ReviewsPage() {
     if (!createdAt) return 'N/A';
     if (createdAt.seconds) {
       return new Date(createdAt.seconds * 1000).toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric'
+      });
+    }
+    if (typeof createdAt === 'number') {
+      return new Date(createdAt).toLocaleDateString('en-IN', {
         year: 'numeric', month: 'short', day: 'numeric'
       });
     }
