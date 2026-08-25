@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, updateDoc, deleteDoc, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -15,7 +15,8 @@ import {
   DollarSign, 
   IndianRupee,
   CheckCircle,
-  Eye
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function ExperiencesPage() {
@@ -25,6 +26,12 @@ export default function ExperiencesPage() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedExp, setSelectedExp] = useState(null);
+  
+  // Delete modal state
+  const [deleteModalExp, setDeleteModalExp] = useState(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -79,16 +86,61 @@ export default function ExperiencesPage() {
     }
   };
 
-  const handleDeleteExp = async (exp) => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${exp.title}"?`)) return;
+  const handleOpenDeleteModal = (exp) => {
+    setDeleteModalExp(exp);
+    setDeleteReason('');
+  };
+
+  const handleConfirmDeleteItinerary = async () => {
+    if (!deleteModalExp) return;
+    const reasonText = deleteReason.trim();
+    if (!reasonText) {
+      alert('Please enter a reason/note for deleting this itinerary.');
+      return;
+    }
+
+    setIsDeleting(true);
     try {
-      const colName = exp._collection || 'itineraries';
-      await deleteDoc(doc(db, colName, exp.id));
-      if (selectedExp?.id === exp.id) setSelectedExp(null);
-      alert('Experience deleted.');
+      const expId = deleteModalExp.id;
+      const title = deleteModalExp.title || 'Itinerary';
+      const targetGuideId = deleteModalExp.guideId || deleteModalExp.userId || deleteModalExp.guideEmail || '';
+
+      // 1. Delete from BOTH 'experiences' and 'itineraries' collections
+      await deleteDoc(doc(db, 'experiences', expId)).catch((err) => console.warn('Err deleting from experiences:', err));
+      await deleteDoc(doc(db, 'itineraries', expId)).catch((err) => console.warn('Err deleting from itineraries:', err));
+
+      // Also set status: 'deleted' as fallback update in case deletion was blocked or cached
+      try {
+        await updateDoc(doc(db, 'experiences', expId), { status: 'deleted', deletionReason: reasonText });
+      } catch (_) {}
+      try {
+        await updateDoc(doc(db, 'itineraries', expId), { status: 'deleted', deletionReason: reasonText });
+      } catch (_) {}
+
+      // 2. Write notification to the guide explaining why it was deleted
+      if (targetGuideId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: targetGuideId,
+          type: 'itinerary_deleted',
+          title: 'Itinerary Deleted by Admin',
+          message: `Your itinerary "${title}" was permanently deleted by Admin. Reason: ${reasonText}`,
+          experienceTitle: title,
+          reason: reasonText,
+          itineraryId: expId,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      if (selectedExp?.id === expId) setSelectedExp(null);
+      setDeleteModalExp(null);
+      setDeleteReason('');
+      alert(`Itinerary "${title}" deleted successfully and guide notified.`);
     } catch (err) {
       console.error("Error deleting experience:", err);
       alert(`Failed to delete experience: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -243,7 +295,7 @@ export default function ExperiencesPage() {
                         <Eye className="w-3.5 h-3.5" /> Details
                       </button>
                       <button
-                        onClick={() => handleDeleteExp(exp)}
+                        onClick={() => handleOpenDeleteModal(exp)}
                         className="text-xs font-bold text-[#D85A30] hover:underline inline-flex items-center gap-1 ml-2"
                       >
                         <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -334,10 +386,63 @@ export default function ExperiencesPage() {
                 Toggle Status ({selectedExp.status === 'published' ? 'Draft' : 'Publish'})
               </button>
               <button
-                onClick={() => handleDeleteExp(selectedExp)}
+                onClick={() => handleOpenDeleteModal(selectedExp)}
                 className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-[#D85A30] font-bold text-xs rounded-xl transition-colors border border-[#D85A30]/30"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation & Reason Modal */}
+      {deleteModalExp && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#E8DFD0] space-y-4">
+            <div className="flex items-center gap-3 text-[#D85A30]">
+              <div className="p-2.5 bg-rose-100 rounded-2xl">
+                <AlertTriangle className="w-6 h-6 text-[#D85A30]" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-[#2C2C2A]">Permanent Deletion Note</h3>
+                <p className="text-xs text-[#5F5E5A]">This will remove the itinerary from Traveller & Guide apps.</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-gray-50 rounded-xl border border-[#E8DFD0] text-xs">
+              <span className="font-bold text-[#2C2C2A]">Itinerary Title: </span>
+              <span className="text-[#0F6E56] font-semibold">{deleteModalExp.title || 'Untitled'}</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#2C2C2A] mb-1">
+                Reason / Note to Guide for Deletion <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows="3"
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="e.g. Safety standard non-compliance, inaccurate details, duplicate listing..."
+                className="w-full p-3 bg-white border border-[#E8DFD0] rounded-xl text-xs text-[#2C2C2A] focus:outline-none focus:border-[#D85A30]"
+              ></textarea>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setDeleteModalExp(null)}
+                disabled={isDeleting}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-[#5F5E5A] font-bold text-xs rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteItinerary}
+                disabled={isDeleting || !deleteReason.trim()}
+                className="flex-1 py-2.5 bg-[#D85A30] hover:bg-[#B54622] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isDeleting ? 'Deleting...' : 'Delete & Notify Guide'}
               </button>
             </div>
           </div>

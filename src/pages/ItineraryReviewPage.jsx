@@ -17,16 +17,11 @@ import {
   Clock, 
   IndianRupee, 
   AlertTriangle, 
-  ShieldCheck, 
-  Image as ImageIcon, 
-  X, 
-  Maximize2,
-  RefreshCw,
-  FileCheck,
-  Award,
-  Info,
-  Layers,
-  Sparkles
+  User,
+  Phone,
+  Mail,
+  Globe,
+  ExternalLink
 } from 'lucide-react';
 
 export default function ItineraryReviewPage() {
@@ -37,6 +32,9 @@ export default function ItineraryReviewPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCards, setExpandedCards] = useState({});
   const [searchParams] = useSearchParams();
+
+  // Real-time map of guide users
+  const [guidesMap, setGuidesMap] = useState({});
 
   // Storage gallery images per experience: { [expId]: Array of files }
   const [expImages, setExpImages] = useState({});
@@ -50,6 +48,24 @@ export default function ItineraryReviewPage() {
   const [rejectReason, setRejectReason] = useState('');
 
   const [lightboxUrl, setLightboxUrl] = useState(null);
+
+  const checkIsVerified = (g) => g && (g.isVerified === true || g.isVerified === "true" || g.verified === true || g.verified === "true");
+
+  // Subscribe to users collection to map guide profile details
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const gMap = {};
+      snapshot.forEach((docSnap) => {
+        const u = { uid: docSnap.id, id: docSnap.id, ...docSnap.data() };
+        gMap[docSnap.id] = u;
+        if (u.email) gMap[u.email.toLowerCase().trim()] = u;
+      });
+      setGuidesMap(gMap);
+    }, (err) => {
+      console.warn("Error fetching users map:", err);
+    });
+    return () => unsub();
+  }, []);
 
   // Read URL query parameter for expId filter if coming from Experiences page
   useEffect(() => {
@@ -552,8 +568,96 @@ export default function ItineraryReviewPage() {
                       </div>
                     )}
 
+                    {/* Guide Profile & Onboarding Info */}
+                    {(() => {
+                      const guideUser = guidesMap[exp.guideId] || (exp.guideEmail ? guidesMap[exp.guideEmail.toLowerCase().trim()] : null);
+                      return (
+                        <div className="bg-[#ECFDF5]/50 border border-[#0F6E56]/30 rounded-2xl p-5 space-y-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E8DFD0] pb-3">
+                            <div className="flex items-center gap-3">
+                              {guideUser?.profilePicUrl || guideUser?.profileImage || exp.guideImage ? (
+                                <img src={guideUser?.profilePicUrl || guideUser?.profileImage || exp.guideImage} alt="Guide" className="w-12 h-12 rounded-full object-cover border-2 border-[#0F6E56]" />
+                              ) : (
+                                <div className="w-12 h-12 rounded-full bg-[#0F6E56] text-white flex items-center justify-center font-bold text-lg shrink-0">
+                                  {(exp.guideName || 'G')[0].toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <h4 className="font-bold text-sm text-[#2C2C2A] flex items-center gap-2 flex-wrap">
+                                  <span>{guideUser?.name || guideUser?.fullName || exp.guideName || 'Local Guide'}</span>
+                                  {checkIsVerified(guideUser) ? (
+                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full inline-flex items-center gap-1">
+                                      Verified Guide
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-bold text-[10px] rounded-full inline-flex items-center gap-1">
+                                      Under Review / Pending
+                                    </span>
+                                  )}
+                                </h4>
+                                <p className="text-xs text-[#5F5E5A] mt-0.5">UID: <code className="bg-white px-1.5 py-0.5 rounded font-mono border border-[#E8DFD0]">{exp.guideId || guideUser?.uid || 'N/A'}</code></p>
+                              </div>
+                            </div>
+
+                            <a
+                              href={`/guide-approvals?guideId=${exp.guideId || guideUser?.uid}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3.5 py-2 bg-[#0F6E56] hover:bg-[#094D3C] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all self-start sm:self-center shrink-0 shadow-xs"
+                            >
+                              <span>Inspect Full Guide Dossier</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+
+                          {/* Details Grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                            <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD0]">
+                              <span className="text-[10px] text-[#5F5E5A] block uppercase font-bold">Email</span>
+                              <span className="font-semibold text-[#2C2C2A] truncate block">{guideUser?.email || exp.guideEmail || 'N/A'}</span>
+                            </div>
+                            <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD0]">
+                              <span className="text-[10px] text-[#5F5E5A] block uppercase font-bold">Phone</span>
+                              <span className="font-semibold text-[#2C2C2A]">{guideUser?.phone || guideUser?.phoneNumber || exp.guidePhone || 'N/A'}</span>
+                            </div>
+                            <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD0]">
+                              <span className="text-[10px] text-[#5F5E5A] block uppercase font-bold">State / City</span>
+                              <span className="font-semibold text-[#2C2C2A]">{guideUser?.state || exp.state || ''} {guideUser?.city ? `(${guideUser.city})` : ''}</span>
+                            </div>
+                            <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD0]">
+                              <span className="text-[10px] text-[#5F5E5A] block uppercase font-bold">Experience</span>
+                              <span className="font-semibold text-[#0F6E56]">{guideUser?.experienceYears || guideUser?.yearsOfExperience || exp.guideExperienceYears || 2} Years</span>
+                            </div>
+                          </div>
+
+                          {/* Languages & Specialisms */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD0]">
+                              <span className="text-[10px] text-[#5F5E5A] block uppercase font-bold mb-0.5">Languages Spoken</span>
+                              <span className="font-semibold text-[#2C2C2A]">
+                                {Array.isArray(guideUser?.languages) ? guideUser.languages.join(', ') : (guideUser?.languages || 'English, Hindi')}
+                              </span>
+                            </div>
+                            <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD0]">
+                              <span className="text-[10px] text-[#5F5E5A] block uppercase font-bold mb-0.5">Specializations</span>
+                              <span className="font-semibold text-[#EF9F27]">
+                                {Array.isArray(guideUser?.specialties) ? guideUser.specialties.join(', ') : (guideUser?.specialisms || 'High Altitude Trekking, Culture')}
+                              </span>
+                            </div>
+                          </div>
+
+                          {(guideUser?.bio || guideUser?.about) && (
+                            <div className="bg-white p-3 rounded-xl border border-[#E8DFD0] text-xs">
+                              <span className="font-bold text-[#2C2C2A] block mb-1">Guide Bio / About:</span>
+                              <p className="text-[#5F5E5A] leading-relaxed">{guideUser.bio || guideUser.about}</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Description & Overview */}
-                    <div className="space-y-3">
+                    <div className="space-y-3 pt-6">
                       <h4 className="text-sm font-bold text-[#2C2C2A] flex items-center gap-2">
                         <Info className="w-4 h-4 text-[#0F6E56]" /> Experience Overview & Description
                       </h4>
