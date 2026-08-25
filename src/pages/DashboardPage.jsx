@@ -54,26 +54,42 @@ export default function DashboardPage() {
       setStats(prev => ({ ...prev, totalUsers: userCount, totalGuides: guideCount }));
     }, (err) => console.warn("Dashboard users error:", err));
 
-    // 2. Experiences count & category breakdown
-    const unsubExp = onSnapshot(collection(db, 'experiences'), (snapshot) => {
-      let expCount = 0;
-      const categoriesMap = {};
+    // 2. Experiences count & category breakdown across both collections
+    let expList = [];
+    let itinList = [];
 
-      snapshot.forEach(docSnap => {
-        expCount++;
-        const exp = docSnap.data();
+    const updateExperiencesStats = () => {
+      const map = {};
+      expList.forEach((e) => map[e.id] = e);
+      itinList.forEach((i) => map[i.id] = i);
+      const combined = Object.values(map);
+
+      const categoriesMap = {};
+      combined.forEach((exp) => {
         const cat = exp.category || 'Uncategorized';
         categoriesMap[cat] = (categoriesMap[cat] || 0) + 1;
       });
 
-      const chartData = Object.keys(categoriesMap).map(catName => ({
+      const chartData = Object.keys(categoriesMap).map((catName) => ({
         name: catName,
         count: categoriesMap[catName]
       }));
 
-      setStats(prev => ({ ...prev, totalExperiences: expCount }));
+      setStats((prev) => ({ ...prev, totalExperiences: combined.length }));
       setCategoryChartData(chartData);
+    };
+
+    const unsubExp = onSnapshot(collection(db, 'experiences'), (snapshot) => {
+      expList = [];
+      snapshot.forEach((docSnap) => expList.push({ id: docSnap.id, ...docSnap.data() }));
+      updateExperiencesStats();
     }, (err) => console.warn("Dashboard experiences error:", err));
+
+    const unsubItin = onSnapshot(collection(db, 'itineraries'), (snapshot) => {
+      itinList = [];
+      snapshot.forEach((docSnap) => itinList.push({ id: docSnap.id, ...docSnap.data() }));
+      updateExperiencesStats();
+    }, (err) => console.warn("Dashboard itineraries error:", err));
 
     // 3. Bookings count, revenue & recent 10 list
     const unsubBookings = onSnapshot(collection(db, 'bookings'), (snapshot) => {
@@ -108,6 +124,7 @@ export default function DashboardPage() {
     return () => {
       unsubUsers();
       unsubExp();
+      unsubItin();
       unsubBookings();
     };
   }, []);

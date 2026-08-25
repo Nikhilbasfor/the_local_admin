@@ -108,17 +108,23 @@ export default function GuideApprovalsPage() {
         rejectionReason: null
       });
 
+      const batch = writeBatch(db);
+
       const expSnapshot = await getDocs(
-        query(collection(db, "experiences"), 
-        where("guideId", "==", guide.uid))
+        query(collection(db, "experiences"), where("guideId", "==", guide.uid))
       );
-      if (!expSnapshot.empty) {
-        const batch = writeBatch(db);
-        expSnapshot.forEach((expDoc) => {
-          batch.update(expDoc.ref, { status: "published" });
-        });
-        await batch.commit();
-      }
+      expSnapshot.forEach((expDoc) => {
+        batch.update(expDoc.ref, { status: "approved" });
+      });
+
+      const itinSnapshot = await getDocs(
+        query(collection(db, "itineraries"), where("guideId", "==", guide.uid))
+      );
+      itinSnapshot.forEach((itinDoc) => {
+        batch.update(itinDoc.ref, { status: "approved", itineraryVerified: true });
+      });
+
+      await batch.commit();
 
       // Write notification
       await addDoc(collection(db, 'notifications'), {

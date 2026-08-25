@@ -32,24 +32,44 @@ export function BadgeProvider({ children }) {
       console.warn("Badge listener users error:", err);
     });
 
-    // Listen to experiences collection for pending itineraries (itineraryVerified != true)
-    const expRef = collection(db, 'experiences');
-    const unsubExp = onSnapshot(expRef, (snapshot) => {
-      let count = 0;
-      snapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        if (data.itineraryVerified !== true) {
-          count++;
-        }
-      });
-      setPendingItinerariesCount(count);
+    // Listen to experiences & itineraries collections for pending itineraries (itineraryVerified != true or status == 'pending')
+    let itinList = [];
+    let expList = [];
+
+    const updatePendingCount = () => {
+      const map = {};
+      expList.forEach((e) => map[e.id] = e);
+      itinList.forEach((i) => map[i.id] = i);
+      const combined = Object.values(map);
+
+      const pendingCount = combined.filter((exp) => {
+        const status = exp.status || exp.itineraryStatus || (exp.itineraryVerified ? 'approved' : 'pending');
+        return (status === 'pending' || !exp.itineraryVerified) && exp.itineraryStatus !== 'changes_requested' && exp.itineraryStatus !== 'rejected';
+      }).length;
+
+      setPendingItinerariesCount(pendingCount);
+    };
+
+    const unsubExp = onSnapshot(collection(db, 'experiences'), (snapshot) => {
+      expList = [];
+      snapshot.forEach((docSnap) => expList.push({ id: docSnap.id, ...docSnap.data() }));
+      updatePendingCount();
     }, (err) => {
       console.warn("Badge listener experiences error:", err);
+    });
+
+    const unsubItin = onSnapshot(collection(db, 'itineraries'), (snapshot) => {
+      itinList = [];
+      snapshot.forEach((docSnap) => itinList.push({ id: docSnap.id, ...docSnap.data() }));
+      updatePendingCount();
+    }, (err) => {
+      console.warn("Badge listener itineraries error:", err);
     });
 
     return () => {
       unsubUsers();
       unsubExp();
+      unsubItin();
     };
   }, [isAuthenticated]);
 
