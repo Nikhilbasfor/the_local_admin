@@ -60,7 +60,7 @@ export default function GuideApprovalsPage() {
       snapshot.forEach((docSnap) => {
         if (!docSnap.exists()) return;
         const u = { uid: docSnap.id, id: docSnap.id, ...docSnap.data() };
-        if (u.role === 'GUIDE') {
+        if (u.role && u.role.toUpperCase() === 'GUIDE') {
           guideList.push(u);
         }
       });
@@ -78,6 +78,9 @@ export default function GuideApprovalsPage() {
 
     return () => unsub();
   }, []);
+
+  // Helper check for verification status across both field schemas
+  const checkIsVerified = (g) => g.isVerified === true || g.isVerified === "true" || g.verified === true || g.verified === "true";
 
   // Fetch documents for guides from Storage path guides/{uid}/documents/
   useEffect(() => {
@@ -104,6 +107,7 @@ export default function GuideApprovalsPage() {
       const userRef = doc(db, 'users', guide.uid);
       await updateDoc(userRef, {
         isVerified: true,
+        verified: true,
         onboardingComplete: true,
         rejectionReason: null
       });
@@ -135,7 +139,7 @@ export default function GuideApprovalsPage() {
         read: false
       });
 
-      alert(`Guide ${guide.fullName || guide.email} has been approved successfully!`);
+      alert(`Guide ${guide.name || guide.fullName || guide.email} has been approved successfully!`);
     } catch (err) {
       console.error("Approve error:", err);
       alert(`Failed to approve guide: ${err.message}`);
@@ -143,10 +147,8 @@ export default function GuideApprovalsPage() {
   };
 
   const handleRevoke = async (guide) => {
-    const reason = window.prompt(`Are you sure you want to revoke verification for ${guide.fullName || guide.email}?\n\nPlease enter the reason/feedback for revoking:`);
-    if (reason === null) {
-      return; // Cancelled
-    }
+    const reason = window.prompt(`Are you sure you want to revoke verification for ${guide.name || guide.fullName || guide.email}?\n\nReason:`);
+    if (reason === null) return;
     const trimmedReason = reason.trim();
     if (!trimmedReason) {
       alert("A revocation reason is required.");
@@ -156,6 +158,7 @@ export default function GuideApprovalsPage() {
       const userRef = doc(db, 'users', guide.uid);
       await updateDoc(userRef, {
         isVerified: false,
+        verified: false,
         rejectionReason: trimmedReason,
         rejectionDate: serverTimestamp(),
         isRevoked: true
@@ -181,6 +184,7 @@ export default function GuideApprovalsPage() {
       const userRef = doc(db, 'users', rejectModalGuide.uid);
       await updateDoc(userRef, {
         isVerified: false,
+        verified: false,
         rejectionReason: rejectReason.trim(),
         rejectionDate: serverTimestamp()
       });
@@ -224,22 +228,25 @@ export default function GuideApprovalsPage() {
 
   // Filter guides based on activeTab & searchQuery
   const filteredGuides = guides.filter((g) => {
+    const guideName = g.name || g.fullName || '';
     const matchesSearch = 
-      (g.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      guideName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (g.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (g.city || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (g.uid || '').includes(searchQuery);
 
     if (!matchesSearch) return false;
 
+    const isVerified = checkIsVerified(g);
+
     if (activeTab === 'pending') {
-      return !g.isVerified && (!g.rejectionReason || g.isRevoked === true) && g.onboardingComplete === true;
+      return !isVerified && (!g.rejectionReason || g.isRevoked === true);
     }
     if (activeTab === 'approved') {
-      return g.isVerified === true || g.isVerified === "true";
+      return isVerified;
     }
     if (activeTab === 'rejected') {
-      return !g.isVerified && !!g.rejectionReason && !g.isRevoked;
+      return !isVerified && !!g.rejectionReason && !g.isRevoked;
     }
     return true; // all
   });
@@ -288,9 +295,10 @@ export default function GuideApprovalsPage() {
           { key: 'all', label: 'All Guides', color: 'bg-blue-600' },
         ].map((tab) => {
           const count = guides.filter(g => {
-            if (tab.key === 'pending') return !g.isVerified && (!g.rejectionReason || g.isRevoked === true) && g.onboardingComplete === true;
-            if (tab.key === 'approved') return g.isVerified === true || g.isVerified === "true";
-            if (tab.key === 'rejected') return !g.isVerified && !!g.rejectionReason && !g.isRevoked;
+            const isVerified = checkIsVerified(g);
+            if (tab.key === 'pending') return !isVerified && (!g.rejectionReason || g.isRevoked === true);
+            if (tab.key === 'approved') return isVerified;
+            if (tab.key === 'rejected') return !isVerified && !!g.rejectionReason && !g.isRevoked;
             return true;
           }).length;
 
@@ -349,31 +357,31 @@ export default function GuideApprovalsPage() {
                       {guide.profileImage ? (
                         <img 
                           src={guide.profileImage} 
-                          alt={guide.fullName || 'Guide'} 
+                          alt={guide.name || guide.fullName || 'Guide'} 
                           className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md"
                         />
                       ) : (
                         <div className="w-16 h-16 rounded-2xl bg-[#0F6E56] text-white flex items-center justify-center font-bold text-xl shadow-md">
-                          {guide.fullName ? guide.fullName.charAt(0).toUpperCase() : 'G'}
+                          {(guide.name || guide.fullName || 'G').charAt(0).toUpperCase()}
                         </div>
                       )}
-                      <span className={`absolute -bottom-1 -right-1 p-1 rounded-full text-white border-2 border-white text-[10px] ${guide.isVerified ? 'bg-[#0F6E56]' : 'bg-[#EF9F27]'}`}>
-                        {guide.isVerified ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                      <span className={`absolute -bottom-1 -right-1 p-1 rounded-full text-white border-2 border-white text-[10px] ${checkIsVerified(guide) ? 'bg-[#0F6E56]' : 'bg-[#EF9F27]'}`}>
+                        {checkIsVerified(guide) ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
                       </span>
                     </div>
 
                     {/* Guide Info */}
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="text-lg font-bold text-[#2C2C2A]">{guide.fullName || 'Unnamed Guide'}</h3>
+                        <h3 className="text-lg font-bold text-[#2C2C2A]">{guide.name || guide.fullName || 'Unnamed Guide'}</h3>
                         <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                          guide.isVerified 
+                          checkIsVerified(guide) 
                             ? 'bg-emerald-100 text-emerald-800' 
                             : guide.rejectionReason 
                               ? 'bg-rose-100 text-rose-800'
                               : 'bg-amber-100 text-amber-800'
                         }`}>
-                          {guide.isVerified ? 'VERIFIED GUIDE' : guide.rejectionReason ? 'REJECTED' : 'PENDING APPROVAL'}
+                          {checkIsVerified(guide) ? 'VERIFIED GUIDE' : guide.rejectionReason ? 'REJECTED' : 'PENDING APPROVAL'}
                         </span>
                         {guide.onboardingComplete && (
                           <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[11px] font-bold">
@@ -406,7 +414,7 @@ export default function GuideApprovalsPage() {
 
                   {/* Top Card Action Buttons */}
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    {!guide.isVerified ? (
+                    {!checkIsVerified(guide) ? (
                       <>
                         <button
                           onClick={() => handleApprove(guide)}

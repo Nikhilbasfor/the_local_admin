@@ -13,17 +13,13 @@ export function BadgeProvider({ children }) {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Listen to users collection for pending guides (role = GUIDE and isVerified != true)
-    const usersQ = query(
-      collection(db, 'users'),
-      where('role', '==', 'GUIDE')
-    );
-
-    const unsubUsers = onSnapshot(usersQ, (snapshot) => {
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       let count = 0;
       snapshot.forEach(docSnap => {
         const data = docSnap.data();
-        if (!data.isVerified) {
+        const isGuide = data.role && data.role.toUpperCase() === 'GUIDE';
+        const isVerified = data.isVerified === true || data.isVerified === "true" || data.verified === true || data.verified === "true";
+        if (isGuide && !isVerified && (!data.rejectionReason || data.isRevoked === true)) {
           count++;
         }
       });

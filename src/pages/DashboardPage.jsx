@@ -47,7 +47,7 @@ export default function DashboardPage() {
       snapshot.forEach(docSnap => {
         userCount++;
         const u = docSnap.data();
-        if (u.role === 'GUIDE') {
+        if (u.role && u.role.toUpperCase() === 'GUIDE') {
           guideCount++;
         }
       });
