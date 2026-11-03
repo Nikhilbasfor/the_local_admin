@@ -60,10 +60,14 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const loginWithPin = (pin) => {
+  const loginWithPin = async (pin) => {
     setAuthError(null);
     if (pin.trim() === ADMIN_PIN) {
-      authenticateFirebaseAdmin();
+      try {
+        await authenticateFirebaseAdmin();
+      } catch (err) {
+        console.warn("Firebase Admin Auth note:", err);
+      }
       setIsAuthenticated(true);
       setAdminData({
         fullName: 'System Administrator',

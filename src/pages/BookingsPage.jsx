@@ -26,11 +26,14 @@ export default function BookingsPage() {
         list.push({ id: docSnap.id, ...docSnap.data() });
       });
       // Sort newest first
-      list.sort((a, b) => {
-        const tA = a.createdAt?.seconds || 0;
-        const tB = b.createdAt?.seconds || 0;
-        return tB - tA;
-      });
+      const getCreatedAtMs = (item) => {
+        if (!item?.createdAt) return 0;
+        if (typeof item.createdAt === 'number') return item.createdAt;
+        if (item.createdAt.seconds) return item.createdAt.seconds * 1000;
+        if (item.createdAt instanceof Date) return item.createdAt.getTime();
+        return 0;
+      };
+      list.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a));
       setBookings(list);
       setLoading(false);
     }, (err) => {

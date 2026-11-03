@@ -10,7 +10,7 @@ export default function LoginPage() {
   const { loginWithPin } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!pin) {
       setErrorMessage('Please enter the 6-digit Admin PIN.');
@@ -21,7 +21,7 @@ export default function LoginPage() {
     setErrorMessage('');
 
     try {
-      loginWithPin(pin);
+      await loginWithPin(pin);
       navigate('/');
     } catch (err) {
       setErrorMessage(err.message || 'Incorrect Admin PIN.');

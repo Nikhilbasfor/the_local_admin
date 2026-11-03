@@ -118,14 +118,14 @@ export default function GuideApprovalsPage() {
         query(collection(db, "experiences"), where("guideId", "==", guide.uid))
       );
       expSnapshot.forEach((expDoc) => {
-        batch.update(expDoc.ref, { status: "approved" });
+        batch.update(expDoc.ref, { status: "published", itineraryStatus: "approved", itineraryVerified: true });
       });
 
       const itinSnapshot = await getDocs(
         query(collection(db, "itineraries"), where("guideId", "==", guide.uid))
       );
       itinSnapshot.forEach((itinDoc) => {
-        batch.update(itinDoc.ref, { status: "approved", itineraryVerified: true });
+        batch.update(itinDoc.ref, { status: "published", itineraryStatus: "approved", itineraryVerified: true });
       });
 
       await batch.commit();

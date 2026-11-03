@@ -163,7 +163,7 @@ export default function ItineraryReviewPage() {
         itineraryVerifiedBy: adminEmail,
         itineraryStatus: 'approved',
         itineraryRejectionReason: null,
-        status: 'approved'
+        status: 'published'
       });
 
       // Write notification
@@ -332,7 +332,7 @@ export default function ItineraryReviewPage() {
       return (status === 'pending' || !exp.itineraryVerified) && exp.itineraryStatus !== 'changes_requested' && exp.itineraryStatus !== 'rejected';
     }
     if (activeTab === 'approved') {
-      return status === 'approved' || exp.itineraryVerified === true;
+      return status === 'approved' || status === 'published' || exp.itineraryVerified === true;
     }
     if (activeTab === 'changes_requested') {
       return exp.itineraryStatus === 'changes_requested';
@@ -344,7 +344,7 @@ export default function ItineraryReviewPage() {
   });
 
   const getStatusBadge = (exp) => {
-    if (exp.itineraryVerified || exp.status === 'approved') {
+    if (exp.itineraryVerified || exp.status === 'approved' || exp.status === 'published') {
       return <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Approved</span>;
     }
     if (exp.itineraryStatus === 'changes_requested') {

@@ -107,11 +107,14 @@ export default function DashboardPage() {
       });
 
       // Sort recent 10 bookings by createdAt descending
-      allBookings.sort((a, b) => {
-        const tA = a.createdAt?.seconds || (a.createdAt instanceof Date ? a.createdAt.getTime() : 0);
-        const tB = b.createdAt?.seconds || (b.createdAt instanceof Date ? b.createdAt.getTime() : 0);
-        return tB - tA;
-      });
+      const getCreatedAtMs = (item) => {
+        if (!item?.createdAt) return 0;
+        if (typeof item.createdAt === 'number') return item.createdAt;
+        if (item.createdAt.seconds) return item.createdAt.seconds * 1000;
+        if (item.createdAt instanceof Date) return item.createdAt.getTime();
+        return 0;
+      };
+      allBookings.sort((a, b) => getCreatedAtMs(b) - getCreatedAtMs(a));
 
       setRecentBookings(allBookings.slice(0, 10));
       setStats(prev => ({ ...prev, totalBookings: count, totalRevenue: revenue }));
